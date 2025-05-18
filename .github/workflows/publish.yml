@@ -1,0 +1,51 @@
+name: Publish Package
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "package.json"
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Check version change
+        id: check
+        run: |
+          git fetch origin ${{ github.event.before }}
+          if git diff ${{ github.event.before }} ${{ github.event.after }} -G'"version": "' --quiet -- package.json; then
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "Package version not changed, skipping publish"
+          else
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "Package version changed, will publish"
+          fi
+
+      - name: Setup Node.js
+        if: steps.check.outputs.version_changed == 'true'
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        if: steps.check.outputs.version_changed == 'true'
+        run: npm install
+
+      - name: Build package
+        if: steps.check.outputs.version_changed == 'true'
+        run: npm run build
+
+      - name: Configure NPM for publishing
+        if: steps.check.outputs.version_changed == 'true'
+        run: |
+          echo "//npm.amatsuka.pro/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+          echo "registry=https://npm.amatsuka.pro/" >> ~/.npmrc
+
+      - name: Publish to NPM
+        if: steps.check.outputs.version_changed == 'true'
+        run: npm publish
